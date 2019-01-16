@@ -1,0 +1,106 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Sets up a group with admin rights that require MFA",
+    "Resources": {
+
+        "AdminRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "RoleName": "AdminRole",
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/AdministratorAccess"
+                ],
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Action": "sts:AssumeRole",
+                        "Principal": {
+                            "AWS": {
+                                "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:root"
+                            }
+                        },
+                        "Condition": {
+                            "Bool": {
+                                "aws:MultiFactorAuthPresent": "true"
+                            }
+                        }
+                    }]
+                }
+            }
+        },
+
+        "AdminGroup": {
+            "Type": "AWS::IAM::Group",
+            "Properties": {
+                "GroupName": "AdminGroup",
+                "Policies": [
+                    {
+                        "PolicyName": "AllowAdminWithMFA",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": {
+                                "Effect": "Allow",
+                                "Action": "*",
+                                "Resource": "*",
+                                "Condition": {
+                                    "Bool": {
+                                        "aws:MultiFactorAuthPresent": true
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "PolicyName": "AllowAdminToAssume",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": {
+                                "Effect": "Allow",
+                                "Action": "sts:AssumeRole",
+                                "Resource": {
+                                    "Fn::GetAtt": ["AdminRole", "Arn"]
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+
+        "ManageMFADevice": {
+            "Type": "AWS::IAM::ManagedPolicy",
+            "Properties": {
+                "ManagedPolicyName": "ManageMFADevice",
+                "Description": "Allows users to set and deactivate their MFA token",
+                "Groups": [
+                    {
+                        "Ref": "AdminGroup"
+                    }
+                ],
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": "iam:*MFADevice",
+                            "Resource": [
+                                { "Fn::Join": ["", ["arn:aws:iam::", { "Ref": "AWS::AccountId" }, ":mfa/${aws:username}"]]},
+                                { "Fn::Join": ["", ["arn:aws:iam::", { "Ref": "AWS::AccountId" }, ":user/${aws:username}"]]}
+                            ]
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "iam:ListMFADevices",
+                                "iam:ListVirtualMFADevices",
+                                "iam:ListUsers"
+                            ],
+                            "Resource": "*"
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}
